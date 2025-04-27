@@ -91,18 +91,18 @@ static int blake2s_init_param( blake2s_state *S, const blake2s_param *P )
 static uint32_t m[16];
 static uint32_t v[16];
 
-#define G(r,i,a,b,c,d)                      \
-  do {                                      \
-    a = a + b + m[blake2s_sigma[r][2*i+0]]; \
-    d = rotr32(d ^ a, 16);                  \
-    c = c + d;                              \
-    b = rotr32(b ^ c, 12);                  \
-    a = a + b + m[blake2s_sigma[r][2*i+1]]; \
-    d = rotr32(d ^ a, 8);                   \
-    c = c + d;                              \
-    b = rotr32(b ^ c, 7);                   \
-  } while(0)
-
+// The hot spot, called 80 times per 64-byte block
+static void hot( int r, int i, int a, int b, int c, int d)
+{
+    v[a] += v[b] + m[blake2s_sigma[r][2*i+0]];
+    v[d] = rotr32(v[d] ^ v[a], 16);
+    v[c] += v[d];
+    v[b] = rotr32(v[b] ^ v[c], 12);
+    v[a] += v[b] + m[blake2s_sigma[r][2*i+1]];
+    v[d] = rotr32(v[d] ^ v[a], 8);
+    v[c] += v[d];
+    v[b] = rotr32(v[b] ^ v[c], 7);
+}
 
 static void blake2s_compress( blake2s_state *S, const uint8_t in[BLAKE2S_BLOCKBYTES] )
 {
@@ -126,21 +126,20 @@ static void blake2s_compress( blake2s_state *S, const uint8_t in[BLAKE2S_BLOCKBY
   v[15] = S->f[1] ^ blake2s_IV[7];
 
   for (int r = 0; r < 10; r++) {
-    G(r,0,v[ 0],v[ 4],v[ 8],v[12]);
-    G(r,1,v[ 1],v[ 5],v[ 9],v[13]);
-    G(r,2,v[ 2],v[ 6],v[10],v[14]);
-    G(r,3,v[ 3],v[ 7],v[11],v[15]);
-    G(r,4,v[ 0],v[ 5],v[10],v[15]);
-    G(r,5,v[ 1],v[ 6],v[11],v[12]);
-    G(r,6,v[ 2],v[ 7],v[ 8],v[13]);
-    G(r,7,v[ 3],v[ 4],v[ 9],v[14]);
+    hot(r,0,0,4, 8,12);
+    hot(r,1,1,5, 9,13);
+    hot(r,2,2,6,10,14);
+    hot(r,3,3,7,11,15);
+    hot(r,4,0,5,10,15);
+    hot(r,5,1,6,11,12);
+    hot(r,6,2,7, 8,13);
+    hot(r,7,3,4, 9,14);
   }
 
   for( i = 0; i < 8; ++i ) {
     S->h[i] = S->h[i] ^ v[i] ^ v[i + 8];
   }
 }
-#undef G
 
 void b2s_hmac_putc(blake2s_state *S, uint8_t c) {
   if (S->buflen == BLAKE2S_BLOCKBYTES) {
