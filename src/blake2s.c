@@ -91,18 +91,28 @@ static int blake2s_init_param( blake2s_state *S, const blake2s_param *P )
 static uint32_t m[16];
 static uint32_t v[16];
 
-#define G(r,i,a,b,c,d)                      \
-  do {                                      \
-    a = a + b + m[blake2s_sigma[r][2*i+0]]; \
-    d = rotr32(d ^ a, 16);                  \
-    c = c + d;                              \
-    b = rotr32(b ^ c, 12);                  \
-    a = a + b + m[blake2s_sigma[r][2*i+1]]; \
-    d = rotr32(d ^ a, 8);                   \
-    c = c + d;                              \
-    b = rotr32(b ^ c, 7);                   \
-  } while(0)
+static const uint8_t idxb[] = {4, 5, 6, 7, 5, 6, 7, 4};
+static const uint8_t idxc[] = {8, 9, 10, 11, 10, 11, 8, 9};
+static const uint8_t idxd[] = {12, 13, 14, 15, 15, 12, 13, 14};
 
+// The hot spot, called 10 times per 64-byte block
+static void hotround( int r )
+{
+  for( int i = 0; i < 8; ++i ) {
+    uint8_t a = i & 3;
+    uint8_t b = idxb[i];
+    uint8_t c = idxc[i];
+    uint8_t d = idxd[i];
+    v[a] += v[b] + m[blake2s_sigma[r][2*i+0]];
+    v[d] = rotr32(v[d] ^ v[a], 16);
+    v[c] += v[d];
+    v[b] = rotr32(v[b] ^ v[c], 12);
+    v[a] += v[b] + m[blake2s_sigma[r][2*i+1]];
+    v[d] = rotr32(v[d] ^ v[a], 8);
+    v[c] += v[d];
+    v[b] = rotr32(v[b] ^ v[c], 7);
+  }
+}
 
 static void blake2s_compress( blake2s_state *S, const uint8_t in[BLAKE2S_BLOCKBYTES] )
 {
@@ -126,21 +136,13 @@ static void blake2s_compress( blake2s_state *S, const uint8_t in[BLAKE2S_BLOCKBY
   v[15] = S->f[1] ^ blake2s_IV[7];
 
   for (int r = 0; r < 10; r++) {
-    G(r,0,v[ 0],v[ 4],v[ 8],v[12]);
-    G(r,1,v[ 1],v[ 5],v[ 9],v[13]);
-    G(r,2,v[ 2],v[ 6],v[10],v[14]);
-    G(r,3,v[ 3],v[ 7],v[11],v[15]);
-    G(r,4,v[ 0],v[ 5],v[10],v[15]);
-    G(r,5,v[ 1],v[ 6],v[11],v[12]);
-    G(r,6,v[ 2],v[ 7],v[ 8],v[13]);
-    G(r,7,v[ 3],v[ 4],v[ 9],v[14]);
+    hotround(r);
   }
 
   for( i = 0; i < 8; ++i ) {
     S->h[i] = S->h[i] ^ v[i] ^ v[i + 8];
   }
 }
-#undef G
 
 void b2s_hmac_putc(blake2s_state *S, uint8_t c) {
   if (S->buflen == BLAKE2S_BLOCKBYTES) {
