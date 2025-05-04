@@ -153,7 +153,7 @@ void b2s_hmac_putc(blake2s_state *S, uint8_t c) {
   S->buf[S->buflen++] = c;
 }
 void b2s_hmac_putc_g(size_t *S, uint8_t c) {
-  return b2s_hmac_putc((void *)S, c);
+  b2s_hmac_putc((void *)S, c);
 }
 
 int b2s_hmac_final( blake2s_state *S, uint8_t *out )
