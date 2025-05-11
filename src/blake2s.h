@@ -75,7 +75,7 @@ extern "C" {
 
 /** HMAC initialization
  * @param ctx   HMAC context
- * @param key   Key, 16 bytes
+ * @param key   Key, 32 bytes
  * @param hsize Expected hash length in bytes
  * @return      Actual hash length in bytes (0 if bogus)
  */
