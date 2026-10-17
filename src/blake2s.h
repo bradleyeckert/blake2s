@@ -17,6 +17,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #if defined(_MSC_VER)
 #define BLAKE2_PACKED(x) __pragma(pack(push, 1)) x __pragma(pack(pop))
@@ -73,10 +74,33 @@ extern "C" {
     BLAKE2_DUMMY_1 = 1/(int)(sizeof(blake2s_param) == BLAKE2S_OUTBYTES)
   };
 
-/** HMAC initialization
+/** Initialization with the full RFC 7693 parameter set
+ * @param S        Hash state
+ * @param hsize    Hash length in bytes, 1 to 32
+ * @param key      Key, or NULL for an unkeyed hash
+ * @param keylen   Key length in bytes, 0 (unkeyed) to 32
+ * @param salt     8-byte salt, or NULL for zeros
+ * @param personal 8-byte personalization, or NULL for zeros
+ * @return         Hash length in bytes (0 if a parameter is bogus)
+ * Matches Python's hashlib.blake2s(digest_size=hsize, key=key, salt=salt,
+ * person=personal). Use salt for a counter or nonce (e.g. a 64-bit counter,
+ * little-endian) and personal to keep hashes made for different purposes
+ * apart. Feed data with b2s_putc/b2s_puts and finish with b2s_final.
+ */
+int b2s_init(blake2s_state *S, int hsize, const uint8_t *key, int keylen,
+             const uint8_t *salt, const uint8_t *personal);
+int b2s_init_g (size_t *S, int hsize, const uint8_t *key, int keylen,
+                const uint8_t *salt, const uint8_t *personal);
+
+/** Keyed hash (MAC) initialization, kept for existing users
  * @param ctx   HMAC context
  * @param key   Key, 32 bytes
  * @param hsize Expected hash length in bytes
+ * @param ctr   64-bit counter, may be 0. A nonzero ctr is XORed into the
+ *              hash's byte counter, which standard BLAKE2s tools (hashlib)
+ *              can't reproduce; for new code, put the counter in the salt
+ *              with b2s_init instead. With ctr = 0 this is
+ *              b2s_init(S, hsize, key, 32, NULL, NULL).
  * @return      Actual hash length in bytes (0 if bogus)
  */
 int b2s_hmac_init(blake2s_state *S, const uint8_t *key, int hsize, uint64_t ctr);
@@ -89,16 +113,22 @@ int b2s_hmac_init_g     (size_t *S, const uint8_t *key, int hsize, uint64_t ctr)
 void b2s_hmac_putc(blake2s_state *S, uint8_t c);
 void b2s_hmac_putc_g     (size_t *S, uint8_t c);
 
-/** HMAC append byte
+/** HMAC finish
  * @param ctx   HMAC context
  * @param out   Output hash
- * @return      Hash length in bytes
+ * @return      0, or -1 if the hash was already finished
  */
 int b2s_hmac_final(blake2s_state *S, uint8_t *out);
 int b2s_hmac_final_g     (size_t *S, uint8_t *out);
 
 // b2s_hmac_putc for byte array
 int b2s_hmac_puts( blake2s_state *S, const uint8_t *pin, int inlen );
+
+/* The append and final functions work for every kind of init; these names
+   read better for an unkeyed hash. */
+#define b2s_putc  b2s_hmac_putc
+#define b2s_puts  b2s_hmac_puts
+#define b2s_final b2s_hmac_final
 
 #if defined(__cplusplus)
 }
