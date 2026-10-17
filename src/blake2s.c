@@ -187,14 +187,17 @@ int b2s_hmac_puts( blake2s_state *S, const uint8_t *in, int inlen )
   return 0;
 }
 
-int b2s_hmac_init(blake2s_state *S, const uint8_t *key, int hsize, uint64_t ctr)
+int b2s_init(blake2s_state *S, int hsize, const uint8_t *key, int keylen,
+             const uint8_t *salt, const uint8_t *personal)
 {
   blake2s_param P[1];
 
-  if ( ( !hsize ) || ( hsize > BLAKE2S_OUTBYTES ) ) return 0;
+  if ( ( hsize < 1 ) || ( hsize > BLAKE2S_OUTBYTES ) ) return 0;
+  if ( ( keylen < 0 ) || ( keylen > BLAKE2S_KEYBYTES ) ) return 0;
+  if ( ( keylen > 0 ) && ( key == NULL ) ) return 0;
 
   P->digest_length = (uint8_t)hsize;
-  P->key_length    = BLAKE2S_KEYBYTES;
+  P->key_length    = (uint8_t)keylen;
   P->fanout        = 1;
   P->depth         = 1;
   store32( &P->leaf_length, 0 );
@@ -202,21 +205,35 @@ int b2s_hmac_init(blake2s_state *S, const uint8_t *key, int hsize, uint64_t ctr)
   store16( &P->xof_length, 0 );
   P->node_depth    = 0;
   P->inner_length  = 0;
-  /* memset(P->reserved, 0, sizeof(P->reserved) ); */
-  memset( P->salt,     0, sizeof( P->salt ) );
-  memset( P->personal, 0, sizeof( P->personal ) );
+  if ( salt ) memcpy( P->salt, salt, sizeof( P->salt ) );
+  else        memset( P->salt, 0, sizeof( P->salt ) );
+  if ( personal ) memcpy( P->personal, personal, sizeof( P->personal ) );
+  else            memset( P->personal, 0, sizeof( P->personal ) );
 
   if( blake2s_init_param( S, P ) < 0 ) return 0;
-  S->t[0] ^= (uint32_t) ctr;
-  S->t[1] ^= ctr >> 32;
 
-  {
+  if ( keylen > 0 ) {         /* a keyed hash starts with the key, padded to a block */
     uint8_t block[BLAKE2S_BLOCKBYTES];
     memset( block, 0, BLAKE2S_BLOCKBYTES );
-    memcpy( block, key, BLAKE2S_KEYBYTES );
+    memcpy( block, key, keylen );
     b2s_hmac_puts( S, block, BLAKE2S_BLOCKBYTES );
     secure_zero_memory( block, BLAKE2S_BLOCKBYTES ); /* Burn the key from stack */
   }
+  return S->outlen;
+}
+int b2s_init_g(size_t *S, int hsize, const uint8_t *key, int keylen,
+               const uint8_t *salt, const uint8_t *personal) {
+  return b2s_init((void *)S, hsize, key, keylen, salt, personal);
+}
+
+int b2s_hmac_init(blake2s_state *S, const uint8_t *key, int hsize, uint64_t ctr)
+{
+  if ( !b2s_init( S, hsize, key, BLAKE2S_KEYBYTES, NULL, NULL ) ) return 0;
+  /* The key block is only buffered so far (it is compressed when more data
+     or b2s_hmac_final arrives), so t[] is still 0 here: the same as XORing
+     ctr in before the key, as earlier versions did. */
+  S->t[0] ^= (uint32_t) ctr;
+  S->t[1] ^= ctr >> 32;
   return S->outlen;
 }
 int b2s_hmac_init_g(size_t *S, const uint8_t *key, int hsize, uint64_t ctr) {
