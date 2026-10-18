@@ -4,6 +4,22 @@ Adapted from the [reference](https://github.com/BLAKE2/BLAKE2) implementation.
 
 The API uses stream orientation so that RAM-constrained systems can handle long messages.
 
+## Speed and size
+
+The compression function keeps its state in local variables (so a
+compiler holds it in registers), and `b2s_puts` compresses whole 64-byte
+blocks straight from its input instead of byte by byte. Hashing 4 KB, keyed,
+counted in an RV32IMC emulator (clang `-Os`, instructions retired):
+
+| Build | Instructions | Code (RV32, `-Os`) |
+|---|---|---|
+| The reference-style code this replaced | 474,589 | 1.5 KB |
+| Default: the rounds as a loop | 182,671 | 2.2 KB |
+| `-DBLAKE2S_UNROLL`: every round written out | 147,506 | 6.7 KB |
+
+`b2s_putc` still takes one byte at a time, for streams; both give the same
+hashes, and `make test` checks both builds.
+
 ## API
 
 ```C

@@ -130,8 +130,9 @@ int main( void )
     }
   }
 
-  /* Test streaming API */
-  for(step = 1; step < BLAKE2S_BLOCKBYTES; ++step) {
+  /* Test streaming API, in pieces smaller than a block and bigger (puts
+     compresses whole blocks straight from its input) */
+  for(step = 1; step < 3 * BLAKE2S_BLOCKBYTES; ++step) {
     for (i = 0; i < BLAKE2_KAT_LENGTH; ++i) {
       uint8_t hash[BLAKE2S_OUTBYTES];
       blake2s_state S;
